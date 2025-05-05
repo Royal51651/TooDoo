@@ -1,6 +1,15 @@
 <script>
-    import { page } from "$app/state";
+  import { page } from "$app/state";
   import { invoke } from "@tauri-apps/api/core";
+
+  /**
+   * TODO
+   * Add a settings menu
+   * TODO
+   * Use cookies or something in rust to store notes, and load them
+   * TODO
+   * Add some way to delete groups (probably a button spawned at the bottom when each group is created)
+  */
 
   /**
      * @type {any[]}
@@ -10,9 +19,14 @@
   let id_count = 0;
   let announcer_message = $state("Default Announcer Message");
   let announcer_state = $state("hidden");
+  // yn in this context stands for yes / no, I swear
+  let announcer_yn_state = $state("hidden");
   let announcer_enabled = $state(true);
   let page_count = $state(0);
-  let slice = $derived(groups.slice(page_count, page_count + 3));
+  let notes_per_page = $state(3);
+  let slice = $derived(groups.slice(page_count, page_count + notes_per_page));
+  let announcer_response = $state("");
+
 
   const randomColor = () => {
       let color = "";
@@ -67,6 +81,15 @@
     }
   }
 
+  const remove_group = (/** @type {number} */ id) => {
+    for(let i = 0; i < groups.length; i++){
+      if(groups[i].id == id){
+        groups.splice(i, 1);
+        break;
+      }
+    }
+  }
+
   const remove_note = (/** @type {any} */ input, /** @type {number} */ id) => {
     let dat = groups[id].data;
     for(let i = 0; i < dat.length; i++){
@@ -81,9 +104,12 @@
     for(let i = 0; i < groups[id].data.length; i++){
       if(groups[id].data[i].id == input){
         if (groups[id].data[i].finished == "Undo"){
-          groups[id].data[i].finished ="Done";
+          remove_note(input, id);
         } else {
           groups[id].data[i].finished ="Undo";
+          let item = groups[id].data[i];
+          groups[id].data.splice(i, 1);
+          groups[id].data.push(item);
         }
         
         break;
@@ -98,6 +124,13 @@
     }
   }
 
+  const announce_yn = (/** @type {string} */ msg) => {
+    if(announcer_enabled){
+      announcer_message = msg;
+      announcer_yn_state = "";
+    }
+  }
+
   const hide_announcer = () => {
     announcer_state = "hidden";
   }
@@ -106,14 +139,31 @@
     announcer_enabled = false;
     announcer_state = "hidden";
   }
+
   const scroll = (/** @type {number} */ dir) => {
-    console.log(Math.floor(groups.length / 3));
+    console.log(Math.floor(groups.length / notes_per_page));
     if(dir == -1 && page_count != 0){
       page_count -= 1;
-    } else if (dir == 1 && page_count < groups.length - 3){
+    } else if (dir == 1 && page_count < groups.length - notes_per_page){
       page_count += 1;
     }
   }
+
+  const update_announcer_response = (/** @type {string} */ input) => {
+    announcer_response = input;
+    announcer_yn_state = "hidden";
+    announcer_state = "hidden";
+  }
+
+  async function delete_single_group(/** @type {number} */ group_id) {
+    await announce_yn("Are you sure you want to delete this group?");
+    // The await ensures this won't run until announce_yn completes
+    console.log(announcer_response);
+    
+    if (announcer_response == "Yes") {
+      remove_group(group_id);
+    }
+}
 
 </script>
 
@@ -131,9 +181,27 @@
   
 </div>
 
+<div class="announcer" style="visibility: {announcer_yn_state}">
+  <span>
+    <p1>{announcer_message}</p1>
+  </span>
+
+  <span>
+    <button onclick={() => update_announcer_response("Yes")}>Yes</button>
+    <button onclick={() => update_announcer_response("No")}>No</button>
+  </span>
+  
+</div>
+
+
+
 <div class="container">
-  <button onclick={() => scroll(-1)}>&lt;</button>
-  <span style="width: 80%;">
+  {#if page_count != 0}
+  <span style="width: 10%;">
+    <button onclick={() => scroll(-1)}>&lt;</button>
+  </span>
+  {/if}
+  <span style="width: 100%;">
     <input
 
     type="text"
@@ -143,7 +211,11 @@
 
   >
   </span>
-  <button onclick={() => scroll(1)}>&gt;</button>
+  {#if page_count < groups.length - notes_per_page}
+  <span style="width: 10%;">
+    <button onclick={() => scroll(1)}>&gt;</button>
+  </span>
+  {/if}
 </div>
 
 <div class="noteContainer">
@@ -161,19 +233,15 @@
 
       {#each group.data as item}
 
-      <div class="item" style="background-color: {item.color};">
-        <span style="width: 5%;">
-          <button onclick={() => finish_note(item.id, group.id)}>{item.finished}</button>
-        </span>
-        <span style="width: 85%;">
-          <p1 class="{item.finished}">{item.text}</p1>
-        </span>
-        <span style="width: 10%;">
-          <button onclick={() => remove_note(item.id, group.id)}>Delete</button>
-        </span> 
-      </div>
-    
+      <button onclick={() => finish_note(item.id, group.id)} class="item {item.finished}" style="background-color: {item.color};">
+          {item.text}
+      </button>
+
       {/each}
+
+      <button onclick={() => delete_single_group(group.id)} class="item">
+        Delete Group {group.name}
+      </button>
     </div>
   {/each}
 </div>
@@ -195,6 +263,13 @@
   top: 20vh;
   left: 10vw;
   z-index: 100;
+}
+
+.container button {
+  background-color: #ffffff;
+  color: #000000;
+  width: 100%;
+  height: 100%;
 }
 
 .blocker {
@@ -236,7 +311,7 @@
 
 .group {
   border: 2px dashed #ffffff;
-  width: 95%;
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -246,8 +321,13 @@
   margin: 5px;
 }
 
+.item:hover {
+  border: 1px solid white;
+}
+
 .item {
   width: 95%;
+  border: 1px solid transparent;
   justify-content: center;
   align-items: center;
   display: flex;
@@ -255,6 +335,8 @@
   border-radius: 5px;
   padding: 10px;
   box-sizing: border-box;
+  overflow-wrap: anywhere;
+  cursor: pointer;
 }
 
 .Undo {
@@ -283,12 +365,16 @@ input {
   box-sizing: border-box;
 }
 
+.group button {
+  width: 95%;
+}
+
 button {
   padding: 5px;
-  background-color: #000000;
-  color: #ffffff;
+  background-color: #ffffff;
+  color: #000000;
   border: 2px solid transparent;
-  border-radius: 10px;
+  border-radius: 5px;
 }
 
 *{

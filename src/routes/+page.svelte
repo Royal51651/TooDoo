@@ -1,4 +1,5 @@
 <script>
+    import { page } from "$app/state";
   import { invoke } from "@tauri-apps/api/core";
 
   /**
@@ -7,11 +8,16 @@
   let groups = $state([]);
   let input_note = $state("");
   let id_count = 0;
+  let announcer_message = $state("Default Announcer Message");
+  let announcer_state = $state("hidden");
+  let announcer_enabled = $state(true);
+  let page_count = $state(0);
+  let slice = $derived(groups.slice(page_count, page_count + 3));
 
   const randomColor = () => {
       let color = "";
       for(let i = 0; i < 3; i++){
-          color += (Math.floor(Math.random() * 64) + 64).toString() + ",";
+          color += (Math.floor(Math.random() * 64) + 96).toString() + ",";
       }
       return color;
   }
@@ -85,10 +91,50 @@
     }
   }
 
+  const announce = (/** @type {string} */ msg) => {
+    if(announcer_enabled){
+      announcer_message = msg;
+      announcer_state = "";
+    }
+  }
+
+  const hide_announcer = () => {
+    announcer_state = "hidden";
+  }
+
+  const disable_announcer = () => {
+    announcer_enabled = false;
+    announcer_state = "hidden";
+  }
+  const scroll = (/** @type {number} */ dir) => {
+    console.log(Math.floor(groups.length / 3));
+    if(dir == -1 && page_count != 0){
+      page_count -= 1;
+    } else if (dir == 1 && page_count < groups.length - 3){
+      page_count += 1;
+    }
+  }
+
 </script>
 
+<div class="blocker" style="visibility: {announcer_state}"></div>
+
+<div class="announcer" style="visibility: {announcer_state}">
+  <span>
+    <p1>{announcer_message}</p1>
+  </span>
+
+  <span>
+    <button onclick={hide_announcer}>Okay</button>
+    <button onclick={disable_announcer}>Disable Announcer</button>
+  </span>
+  
+</div>
+
 <div class="container">
-  <input
+  <button onclick={() => scroll(-1)}>&lt;</button>
+  <span style="width: 80%;">
+    <input
 
     type="text"
     onkeydown={(e) => e.key === "Enter" && add_group(input_note)}
@@ -96,10 +142,12 @@
     bind:value={input_note}
 
   >
+  </span>
+  <button onclick={() => scroll(1)}>&gt;</button>
 </div>
 
 <div class="noteContainer">
-  {#each groups as group}
+  {#each slice as group}
     <div class="group">
 
       <input
@@ -126,26 +174,62 @@
       </div>
     
       {/each}
-
     </div>
   {/each}
 </div>
 
 <style>
 
+.announcer {
+  width: 80vw;
+  height: 50vh;
+  justify-content: space-evenly;
+  align-items: center;
+  display: flex;
+  border-radius: 5px;
+  flex-direction: column;
+  padding: 10px;
+  box-sizing: border-box;
+  background-color: rgb(108, 157, 125);
+  position: fixed;
+  top: 20vh;
+  left: 10vw;
+  z-index: 100;
+}
+
+.blocker {
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.9);
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 50;
+}
+
+.announcer p1, .announcer button {
+  color: #ffffff;
+  font-size: min(3vw, 3vh);
+}
+
+.announcer span {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
 .container {
   justify-content: center;
   align-items: center;
   display: flex;
-  flex-direction: column;
   width: 100%;
   height: 100%;
 }
 
 .noteContainer {
-  justify-content: center;
+  justify-content: space-between;
   display: flex;
-  flex-direction: row;
   width: 100%;
   height: 100%;
 }
@@ -170,11 +254,11 @@
   margin: 10px;
   border-radius: 5px;
   padding: 10px;
+  box-sizing: border-box;
 }
 
 .Undo {
   text-decoration: line-through;
-  color: #8b8b8b;
 }
 
 span{
@@ -183,6 +267,7 @@ span{
   justify-content: center;
   padding-left: 5px;
   padding-right: 5px;
+  box-sizing: border-box;
 }
 
 input {
@@ -195,6 +280,7 @@ input {
   border: none;
   padding: 20px;
   color: #000000;
+  box-sizing: border-box;
 }
 
 button {
